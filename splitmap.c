@@ -140,10 +140,14 @@ int main(int argc, char *argv[])
         }
         else if (!strcmp(argv[param], "--item"))
         {
+            char *name;
+            int id;
             param++;
             // Items are represented in a comma separated list
             // of <itemname>,<itemID>
-            addItem(strtok(argv[param], ","), atoi(strtok(NULL, ",")), 0);
+            name = strtok(argv[param], ",");
+            id = atoi(strtok(NULL, ","));
+            addItem(name, id, 0);
             currentItem++;
         }
     }
