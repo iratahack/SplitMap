@@ -2,10 +2,11 @@
 CC := clang
 CFLAGS=-O3 -Wall
 
-all: splitmap
+all: build/splitmap
 
 clean:
-	rm -f *.o splitmap
+	rm -f build/splitmap
 
-splitmap: splitmap.c optimize.c compress.c memory.c
-	$(CC) $(CFLAGS) $+ -o splitmap
+build/splitmap: splitmap.c optimize.c compress.c memory.c
+	mkdir -p build
+	$(CC) $(CFLAGS) $+ -o build/splitmap
