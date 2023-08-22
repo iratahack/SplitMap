@@ -247,7 +247,7 @@ int main(int argc, char *argv[])
 
             if (itemsOnly == 0)
             {
-                printf("%s ", outputFileName);
+                fprintf(stderr, "%s ", outputFileName);
                 doCompression(outputFileName, inputData, inputSize);
             }
 

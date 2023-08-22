@@ -72,7 +72,7 @@ BLOCK* optimize(unsigned char *input_data, int input_size, int skip, int offset_
     /* start with fake block */
     assign(&last_match[INITIAL_OFFSET], allocate(-1, skip-1, INITIAL_OFFSET, NULL));
 
-    printf("[");
+    fprintf(stderr, "[");
 
     /* process remaining bytes */
     for (index = skip; index < input_size; index++) {
@@ -126,13 +126,13 @@ BLOCK* optimize(unsigned char *input_data, int input_size, int skip, int offset_
 
         /* indicate progress */
         if (index*MAX_SCALE/input_size > dots) {
-            printf(".");
-            fflush(stdout);
+            fprintf(stderr, ".");
+            fflush(stderr);
             dots++;
         }
     }
 
-    printf("]\n");
+    fprintf(stderr, "]\n");
 
     free(last_literal);
     free(last_match);
