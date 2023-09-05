@@ -7,18 +7,19 @@
 #define MAX_OFFSET_ZX0    32640
 #define MAX_OFFSET_ZX7     2176
 
-#define MAX_ITEMS   10
+#define MAX_ITEMS   256
 
 typedef struct
 {
     char *name;
     int id;
-    int value;
+    int count;
+    unsigned char frame;
 } item_t;
 
 item_t items[MAX_ITEMS];
 
-item_t* addItem(char *name, int id, int initial)
+item_t* addItem(char *name, int id, int initial, unsigned char frame)
 {
     for (int n = 0; n < MAX_ITEMS; n++)
     {
@@ -26,7 +27,8 @@ item_t* addItem(char *name, int id, int initial)
         {
             items[n].name = name;
             items[n].id = id;
-            items[n].value = initial;
+            items[n].count = initial;
+            items[n].frame = frame;
             return (&items[n]);
         }
     }
@@ -97,7 +99,7 @@ int main(int argc, char *argv[])
     int inputSize;
     int currentItem = 0;
 
-    memset(&items[0], 0, sizeof(items));
+    memset(items, 0, sizeof(items));
 
     if (argc < 2)
     {
@@ -140,14 +142,27 @@ int main(int argc, char *argv[])
         }
         else if (!strcmp(argv[param], "--item"))
         {
+            char *tmp;
             char *name;
             int id;
+            unsigned char frame;
+
             param++;
             // Items are represented in a comma separated list
             // of <itemname>,<itemID>
             name = strtok(argv[param], ",");
             id = atoi(strtok(NULL, ","));
-            addItem(name, id, 0);
+
+            if((tmp = strtok(NULL, ",")) != NULL)
+            {
+                frame = atoi(tmp);
+            }
+            else
+            {
+                frame = 0;
+            }
+
+            addItem(name, id, 0, frame);
             currentItem++;
         }
     }
@@ -261,8 +276,8 @@ int main(int argc, char *argv[])
                     if (inputData[map] == items[n].id)
                     {
                         fprintf(cFile, "        db      $01, $%02x, $%02x, $%02x\n", (map % levelWidth) * 8, (map / levelWidth) * 8,
-                                0);
-                        items[n].value++;
+                                items[n].frame);
+                        items[n].count++;
                     }
                 }
                 fprintf(cFile, "        db      $ff\n\n");
@@ -276,7 +291,7 @@ int main(int argc, char *argv[])
     {
         if (items[n].name)
         {
-            printf("\tdefc\t%s_COUNT=%d\n", items[n].name, items[n].value);
+            printf("\tdefc\t%s_COUNT=%d\n", items[n].name, items[n].count);
         }
     }
 
