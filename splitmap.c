@@ -1,4 +1,4 @@
-#include <sys/queue.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -298,7 +298,7 @@ int main(int argc, char *argv[])
 
             for (int n = 0; items[n].tableName != NULL; n++)
             {
-                fprintf(cFile, "level%d%s:\n", (y * (mapWidth / levelWidth)) + x, items[n].tableName);
+                bool oneShot = FALSE;
 
                 for (item_data_t *data = items[n].data; data != NULL; data = data->next)
                 {
@@ -307,14 +307,23 @@ int main(int argc, char *argv[])
                     {
                         if (inputData[map] == data->id)
                         {
+                            if (!oneShot)
+                            {
+                                oneShot = TRUE;
+                                fprintf(cFile, "level%d%s:\n", (y * (mapWidth / levelWidth)) + x, items[n].tableName);
+                            }
                             fprintf(cFile, "        db      $01, $%02x, $%02x, $%02x\n", (map % levelWidth) * 8,
                                     (map / levelWidth) * 8, data->frame);
                             items[n].count++;
                         }
                     }
                 }
-
-                fprintf(cFile, "        db      $ff\n\n");
+                if (!oneShot)
+                {
+                    fprintf(cFile, "level%d%s equ eot\n\n", (y * (mapWidth / levelWidth)) + x, items[n].tableName);
+                }
+                else
+                    fprintf(cFile, "        db      $ff\n\n");
             }
         }
     }
@@ -325,7 +334,7 @@ int main(int argc, char *argv[])
     {
         if (items[n].tableName)
         {
-            printf("\tdefc\t%s_COUNT=%d\n", items[n].tableName, items[n].count);
+            printf("\t#define\t%s_COUNT %d\n", items[n].tableName, items[n].count);
         }
     }
 
@@ -337,9 +346,12 @@ int main(int argc, char *argv[])
         fprintf(cFile, "\n");
         if (roDataSection)
         {
-            fprintf(cFile, "        section  %s", roDataSection);
+            fprintf(cFile, "        section  %s\n", roDataSection);
             fprintf(cFile, "\n");
         }
+        fprintf(cFile, "eot:\n");
+        fprintf(cFile, "        db      $ff\n\n");
+
         fprintf(cFile, "        extern  _levelTable\n");
         fprintf(cFile, "\n");
         fprintf(cFile, "_levelTable:\n");
