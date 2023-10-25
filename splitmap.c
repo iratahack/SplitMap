@@ -254,7 +254,7 @@ int main(int argc, char *argv[])
     for (int n = 0; items[n].tableName != NULL; n++)
     {
 
-        fprintf(cFile, "        extern  _%sTables\n\n", items[n].tableName);
+        fprintf(cFile, "        public  _%sTables\n\n", items[n].tableName);
         fprintf(cFile, "_%sTables:\n", items[n].tableName);
         for (int levels = 0; levels < (mapHeight / levelHeight) * (mapWidth / levelWidth); levels++)
         {
@@ -352,7 +352,7 @@ int main(int argc, char *argv[])
         fprintf(cFile, "eot:\n");
         fprintf(cFile, "        db      $ff\n\n");
 
-        fprintf(cFile, "        extern  _levelTable\n");
+        fprintf(cFile, "        public  _levelTable\n");
         fprintf(cFile, "\n");
         fprintf(cFile, "_levelTable:\n");
 
