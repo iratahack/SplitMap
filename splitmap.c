@@ -15,6 +15,7 @@ typedef struct item_data
     struct item_data *next;
     int id;
     unsigned char frame;
+    unsigned char collIndex;
 } item_data_t;
 
 typedef struct
@@ -25,8 +26,9 @@ typedef struct
 } item_t;
 
 item_t items[MAX_ITEMS];
+item_t itemCount[MAX_ITEMS];
 
-item_t* addItem(char *name, int id, unsigned char frame)
+item_t* addItem(char *name, int id, unsigned char frame, unsigned char collisionIndex)
 {
     int n;
     item_t *foundEntry = NULL;
@@ -62,6 +64,7 @@ item_t* addItem(char *name, int id, unsigned char frame)
 
     itemData->id = id;
     itemData->frame = frame;
+    itemData->collIndex = collisionIndex;
 
     // Add to list
     itemData->next = foundEntry->data;
@@ -134,6 +137,7 @@ int main(int argc, char *argv[])
     int inputSize;
 
     memset(items, 0, sizeof(items));
+    memset(itemCount, 0, sizeof(itemCount));
 
     if (argc < 2)
     {
@@ -182,6 +186,7 @@ int main(int argc, char *argv[])
             char *name;
             int id;
             unsigned char frame;
+            unsigned char collIndex;
 
             param++;
             // Items are represented in a comma separated list
@@ -198,7 +203,42 @@ int main(int argc, char *argv[])
                 frame = 0;
             }
 
-            addItem(name, id, frame);
+            if ((tmp = strtok(NULL, ",")) != NULL)
+            {
+                collIndex = atoi(tmp);
+            }
+            else
+            {
+                collIndex = 0;
+            }
+
+            addItem(name, id, frame, collIndex);
+        }
+        else if (!strcmp(argv[param], "--sprite"))
+        {
+            char *name;
+            int id;
+
+            param++;
+            // Items are represented in a comma separated list
+            // of <itemname>,<itemID>
+            name = strtok(argv[param], ",");
+            id = atoi(strtok(NULL, ","));
+
+            addItem(name, id, 0, 0);
+        }
+        else if (!strcmp(argv[param], "--count"))
+        {
+            char *name;
+            int id;
+
+            param++;
+            // Items are represented in a comma separated list
+            // of <itemname>,<itemID>
+            id = atoi(strtok(argv[param], ","));
+            name = strtok(NULL, ",");
+
+            itemCount[id].tableName = name;
         }
     }
 
@@ -312,9 +352,9 @@ int main(int argc, char *argv[])
                                 oneShot = TRUE;
                                 fprintf(cFile, "level%d%s:\n", (y * (mapWidth / levelWidth)) + x, items[n].tableName);
                             }
-                            fprintf(cFile, "        db      $01, $%02x, $%02x, $%02x\n", (map % levelWidth) * 8,
-                                    (map / levelWidth) * 8, data->frame);
-                            items[n].count++;
+                            fprintf(cFile, "        db      $01, $%02x, $%02x, $%02x, $%02x, $%02x\n", (map % levelWidth) * 8,
+                                    (map / levelWidth) * 8, data->frame, data->id, data->collIndex);
+                            itemCount[data->id].count++;
                         }
                     }
                 }
@@ -330,11 +370,11 @@ int main(int argc, char *argv[])
     fclose(inFile);
     free(inputData);
 
-    for (int n = 0; items[n].tableName != NULL; n++)
+    for (int n = 0; n<MAX_ITEMS; n++)
     {
-        if (items[n].tableName)
+        if (itemCount[n].tableName)
         {
-            printf("\t#define\t%s_COUNT %d\n", items[n].tableName, items[n].count);
+            printf("\t#define\t%s_COUNT %d\n", itemCount[n].tableName, itemCount[n].count);
         }
     }
 
