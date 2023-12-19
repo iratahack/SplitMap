@@ -249,6 +249,8 @@ int main(int argc, char *argv[])
     {
         fprintf(cFile, "        section %s", roDataSection);
         fprintf(cFile, "\n");
+        fprintf(cFile, "eot:\n");
+        fprintf(cFile, "        db      $ff\n\n");
     }
 
     for (int n = 0; items[n].tableName != NULL; n++)
@@ -349,8 +351,6 @@ int main(int argc, char *argv[])
             fprintf(cFile, "        section  %s\n", roDataSection);
             fprintf(cFile, "\n");
         }
-        fprintf(cFile, "eot:\n");
-        fprintf(cFile, "        db      $ff\n\n");
 
         fprintf(cFile, "        public  _levelTable\n");
         fprintf(cFile, "\n");
