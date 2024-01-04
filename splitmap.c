@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <libgen.h>
 #include "zx0.h"
 
 #define MAX_OFFSET_ZX0    32640
@@ -124,14 +125,18 @@ int main(int argc, char *argv[])
     char *dataSection = NULL;
     char *roDataSection = NULL;
     unsigned char *inputData = NULL;
+    unsigned char *compressData = NULL;
     FILE *inFile = NULL;
     FILE *cFile = NULL;
     int mapWidth = 0;
     int mapHeight = 0;
     int levelWidth = 0;
     int levelHeight = 0;
+    int compressWidth = -1;
+    int compressHeight = -1;
     int itemsOnly = 0;
-    int inputSize;
+    int inputSize = 0;
+    int compressSize = 0;
 
     memset(items, 0, sizeof(items));
 
@@ -160,6 +165,12 @@ int main(int argc, char *argv[])
             param++;
             levelWidth = atoi(strtok(argv[param], "x"));
             levelHeight = atoi(strtok(NULL, "x"));
+        }
+        else if (!strcmp(argv[param], "--output-size"))
+        {
+            param++;
+            compressWidth = atoi(strtok(argv[param], "x"));
+            compressHeight = atoi(strtok(NULL, "x"));
         }
         else if (!strcmp(argv[param], "--map"))
         {
@@ -208,6 +219,15 @@ int main(int argc, char *argv[])
         exit(-1);
     }
 
+    if (compressWidth == -1)
+    {
+        compressWidth = levelWidth;
+    }
+    if (compressHeight == -1)
+    {
+        compressHeight = levelHeight;
+    }
+
     if ((inFile = fopen(fileName, "rb")) == NULL)
     {
         fprintf(stderr, "Could not open in file\n");
@@ -233,11 +253,23 @@ int main(int argc, char *argv[])
         exit(-1);
     }
 
+    compressSize = compressHeight * compressWidth;
+    if (!(compressData = malloc(compressSize)))
+    {
+        free(outputFileName);
+        free(inputData);
+        fclose(inFile);
+        fprintf(stderr, "Error allocating compressed data buffer\n");
+        exit(-1);
+    }
+
     sprintf(outputFileName, "%s.inc", fileName);
     if ((cFile = fopen(outputFileName, "w")) == NULL)
     {
         fprintf(stderr, "Could not open in file\n");
         free(outputFileName);
+        free(inputData);
+        free(compressData);
         exit(-1);
     }
 
@@ -276,8 +308,6 @@ int main(int argc, char *argv[])
     {
         for (int x = 0; x < (mapWidth / levelWidth); x++)
         {
-            sprintf(outputFileName, "%s_%02d%02d.%s", fileName, x, y, ext);
-
             for (int row = 0; row < levelHeight; row++)
             {
                 fseek(inFile, (y * levelHeight * mapWidth) + (x * levelWidth) + (row * mapWidth), SEEK_SET);
@@ -287,15 +317,10 @@ int main(int argc, char *argv[])
                     fprintf(stderr, "Error reading input file\n");
                     free(outputFileName);
                     free(inputData);
+                    free(compressData);
                     fclose(inFile);
                     exit(-1);
                 }
-            }
-
-            if (itemsOnly == 0)
-            {
-                fprintf(stderr, "%s ", outputFileName);
-                doCompression(outputFileName, inputData, inputSize);
             }
 
             for (int n = 0; items[n].tableName != NULL; n++)
@@ -329,8 +354,41 @@ int main(int argc, char *argv[])
             }
         }
     }
+
+    // See if compressed maps need to be written
+    if (itemsOnly == 0)
+    {
+        rewind(inFile);
+
+        for (int y = 0; y < (mapHeight / compressHeight); y++)
+        {
+            for (int x = 0; x < (mapWidth / compressWidth); x++)
+            {
+                sprintf(outputFileName, "%s_%02d%02d.%s", fileName, x, y, ext);
+
+                for (int row = 0; row < compressHeight; row++)
+                {
+                    fseek(inFile, (y * compressHeight * mapWidth) + (x * compressWidth) + (row * mapWidth), SEEK_SET);
+
+                    if ((fread(&compressData[row * compressWidth], compressWidth, 1, inFile)) != 1)
+                    {
+                        fprintf(stderr, "Error reading input file\n");
+                        free(outputFileName);
+                        free(inputData);
+                        free(compressData);
+                        fclose(inFile);
+                        exit(-1);
+                    }
+                }
+                fprintf(stderr, "%s ", outputFileName);
+                doCompression(outputFileName, compressData, compressSize);
+            }
+        }
+    }
     fclose(inFile);
+    free(outputFileName);
     free(inputData);
+    free(compressData);
 
     for (int n = 0; items[n].tableName != NULL; n++)
     {
@@ -356,27 +414,28 @@ int main(int argc, char *argv[])
         fprintf(cFile, "\n");
         fprintf(cFile, "_levelTable:\n");
 
-        for (int y = 0; y < (mapHeight / levelHeight); y++)
+        char *fname = basename(fileName);
+
+        for (int y = 0; y < (mapHeight / compressHeight); y++)
         {
-            for (int x = 0; x < (mapWidth / levelWidth); x++)
+            for (int x = 0; x < (mapWidth / compressWidth); x++)
             {
-                fprintf(cFile, "        dw      %s_%02d%02d\n", fileName, x, y);
+                fprintf(cFile, "        dw      %s_%02d%02d\n", fname, x, y);
             }
         }
 
         fprintf(cFile, "\n");
 
-        for (int y = 0; y < (mapHeight / levelHeight); y++)
+        for (int y = 0; y < (mapHeight / compressHeight); y++)
         {
-            for (int x = 0; x < (mapWidth / levelWidth); x++)
+            for (int x = 0; x < (mapWidth / compressWidth); x++)
             {
-                fprintf(cFile, "%s_%02d%02d:\n", fileName, x, y);
-                fprintf(cFile, "        binary  \"%s_%02d%02d.nxm.zx0\"\n", fileName, x, y);
+                fprintf(cFile, "%s_%02d%02d:\n", fname, x, y);
+                fprintf(cFile, "        binary  \"%s_%02d%02d.nxm.zx0\"\n", fname, x, y);
             }
         }
     }
     fclose(cFile);
-    free(outputFileName);
 
     // Free allocated memory
     for (int n = 0; items[n].tableName != NULL; n++)
