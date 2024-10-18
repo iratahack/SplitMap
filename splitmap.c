@@ -6,10 +6,10 @@
 #include <libgen.h>
 #include "zx0.h"
 
-#define MAX_OFFSET_ZX0    32640
-#define MAX_OFFSET_ZX7     2176
+#define MAX_OFFSET_ZX0 32640
+#define MAX_OFFSET_ZX7 2176
 
-#define MAX_ITEMS   256
+#define MAX_ITEMS 256
 
 typedef struct item_data
 {
@@ -27,7 +27,7 @@ typedef struct
 
 item_t items[MAX_ITEMS];
 
-item_t* addItem(char *name, int id, unsigned char frame)
+item_t *addItem(char *name, int id, unsigned char frame)
 {
     int n;
     item_t *foundEntry = NULL;
@@ -84,7 +84,7 @@ void doCompression(char *fileName, unsigned char *input_data, int input_size)
     int classic_mode = TRUE;
     void *blockStart = NULL;
 
-    output_name = (char*) malloc(strlen(fileName) + 5);
+    output_name = (char *)malloc(strlen(fileName) + 5);
     strcpy(output_name, fileName);
     strcat(output_name, ".zx0");
 
@@ -98,7 +98,7 @@ void doCompression(char *fileName, unsigned char *input_data, int input_size)
     }
 
     output_data = compress(optimize(input_data, input_size, skip, quick_mode ? MAX_OFFSET_ZX7 : MAX_OFFSET_ZX0, &blockStart),
-            input_data, input_size, skip, backwards_mode, !classic_mode && !backwards_mode, &output_size, &delta);
+                           input_data, input_size, skip, backwards_mode, !classic_mode && !backwards_mode, &output_size, &delta);
 
     free(blockStart);
     /* write output file */
@@ -137,14 +137,15 @@ int main(int argc, char *argv[])
     int itemsOnly = 0;
     int inputSize = 0;
     int compressSize = 0;
+    int blank = 0;
 
     memset(items, 0, sizeof(items));
 
     if (argc < 2)
     {
         printf(
-                "%s --map <filename> --map-size <WIDTHxHEIGHT> --level-size <WIDTHxHEIGHT> [--[ro]datasection <section name>] [--items-only] [--item <name>,<ID>[,<FRAME>] [...]]\n",
-                argv[0]);
+            "%s --map <filename> --map-size <WIDTHxHEIGHT> --level-size <WIDTHxHEIGHT> [--[ro]datasection <section name>] [--items-only] [--item <name>,<ID>[,<FRAME>] [...]]\n",
+            argv[0]);
         return 0;
     }
 
@@ -187,6 +188,11 @@ int main(int argc, char *argv[])
             param++;
             roDataSection = argv[param];
         }
+        else if (!strcmp(argv[param], "--blank"))
+        {
+            param++;
+            blank = atoi(argv[param]);
+        }
         else if (!strcmp(argv[param], "--item"))
         {
             char *tmp;
@@ -228,7 +234,7 @@ int main(int argc, char *argv[])
         compressHeight = levelHeight;
     }
 
-    if ((inFile = fopen(fileName, "rb")) == NULL)
+    if ((inFile = fopen(fileName, "r+b")) == NULL)
     {
         fprintf(stderr, "Could not open in file\n");
         exit(-1);
@@ -334,6 +340,9 @@ int main(int argc, char *argv[])
                     {
                         if (inputData[map] == data->id)
                         {
+                            // Items in tables don't need to be in
+                            // the map, blank them out.
+                            inputData[map] = blank;
                             if (!oneShot)
                             {
                                 oneShot = TRUE;
@@ -351,6 +360,22 @@ int main(int argc, char *argv[])
                 }
                 else
                     fprintf(cFile, "        db      $ff\n\n");
+            }
+
+            // Write out updated map
+            for (int row = 0; row < levelHeight; row++)
+            {
+                fseek(inFile, (y * levelHeight * mapWidth) + (x * levelWidth) + (row * mapWidth), SEEK_SET);
+
+                if ((fwrite(&inputData[row * levelWidth], levelWidth, 1, inFile)) != 1)
+                {
+                    fprintf(stderr, "Error writing updated map\n");
+                    free(outputFileName);
+                    free(inputData);
+                    free(compressData);
+                    fclose(inFile);
+                    exit(-1);
+                }
             }
         }
     }
