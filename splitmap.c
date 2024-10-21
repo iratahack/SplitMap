@@ -3,7 +3,7 @@
 #include <string.h>
 #include <stdlib.h>
 //#include <unistd.h>
-#include <libgen.h>
+//#include <libgen.h>
 #include "zx0.h"
 
 #define MAX_OFFSET_ZX0 32640
