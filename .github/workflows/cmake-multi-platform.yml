@@ -53,9 +53,11 @@ jobs:
     - name: Install z88dk
       shell: bash
       run: |
-        export PATH=C:/msys64/usr/bin:$PATH
+        export PATH=/c/msys64/usr/bin:$PATH
         echo $PWD
         echo $PATH
+        ls -al /c
+        ls -al /c/msys64/usr/bin
         wget -qO- https://github.com/iratahack/z88dk/releases/download/latest/z88dk-ubuntu-22.04.tgz | tar xz
         echo "PATH=$PWD/z88dk/bin:$PATH" >> $GITHUB_ENV
 
