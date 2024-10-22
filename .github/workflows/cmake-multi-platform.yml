@@ -50,6 +50,12 @@ jobs:
       run: |
         echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
 
+    - name: Install z88dk
+      shell: bash
+      run: |
+        wget -qO- https://github.com/iratahack/z88dk/releases/download/latest/z88dk-ubuntu-22.04.tgz | tar xz
+        echo "PATH=$PWD/z88dk/bin:$PATH" >> $GITHUB_ENV
+
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
