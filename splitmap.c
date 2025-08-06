@@ -122,6 +122,7 @@ int main(int argc, char *argv[])
     char *outputFileName = NULL;
     char *fileName = NULL;
     char *ext = NULL;
+    char *tablesSection = NULL;
     char *dataSection = NULL;
     char *roDataSection = NULL;
     unsigned char *inputData = NULL;
@@ -187,6 +188,11 @@ int main(int argc, char *argv[])
         {
             param++;
             roDataSection = argv[param];
+        }
+        else if (!strcmp(argv[param], "--tablessection"))
+        {
+            param++;
+            tablesSection = argv[param];
         }
         else if (!strcmp(argv[param], "--blank"))
         {
@@ -289,6 +295,12 @@ int main(int argc, char *argv[])
         fprintf(cFile, "\n");
         fprintf(cFile, "eot:\n");
         fprintf(cFile, "        db      $ff\n\n");
+    }
+
+    if (tablesSection)
+    {
+        fprintf(cFile, "        section %s", tablesSection);
+        fprintf(cFile, "\n");
     }
 
     for (int n = 0; items[n].tableName != NULL; n++)
