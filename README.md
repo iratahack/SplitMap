@@ -91,7 +91,7 @@ Usage: ./splitmap --map <filename> --map-size <WIDTHxHEIGHT> --level-size <WIDTH
 | --rodatasection   | Name of the linker section for read-only data (RODATA)                      |
 | --datasection     | Name of the linker section for writable data (DATA)                         |
 | --items-only      | Output only items and item tables; do not output compressed map data        |
-| --item            | Define a collectible item within the map (format: <name>,<ID>[,<FRAME>])    |
+| --item            | Define a collectible item within the map (format: &lt;name&gt;,&lt;ID&gt;[,&lt;FRAME&gt;])    |
 
 ## Examples
 
