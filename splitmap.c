@@ -145,7 +145,7 @@ int main(int argc, char *argv[])
     if (argc < 2)
     {
         printf(
-            "%s --map <filename> --map-size <WIDTHxHEIGHT> --level-size <WIDTHxHEIGHT> [--[ro]datasection <section name>] [--items-only] [--item <name>,<ID>[,<FRAME>] [...]]\n",
+            "%s --map <filename> --map-size <WIDTHxHEIGHT> --level-size <WIDTHxHEIGHT> [--blank <tile ID>] [--tablessection <section name>] [--[ro]datasection <section name>] [--items-only] [--item <name>,<ID>[,<FRAME>] [...]]\n",
             argv[0]);
         return 0;
     }
