@@ -10,6 +10,7 @@
 #define MAX_OFFSET_ZX7 2176
 
 #define MAX_ITEMS 256
+#define MAX_STRIPS 16
 
 typedef struct item_data
 {
@@ -142,10 +143,12 @@ int main(int argc, char *argv[])
 
     memset(items, 0, sizeof(items));
 
+    int horizontalStrip = 0;
+
     if (argc < 2)
     {
         printf(
-            "%s --map <filename> --map-size <WIDTHxHEIGHT> --level-size <WIDTHxHEIGHT> [--blank <tile ID>] [--tablessection <section name>] [--[ro]datasection <section name>] [--items-only] [--item <name>,<ID>[,<FRAME>] [...]]\n",
+            "%s --map <filename> --map-size <WIDTHxHEIGHT> --level-size <WIDTHxHEIGHT> [--blank <tile ID>] [--tablessection <section name>] [--[ro]datasection <section name>] [--items-only] [--horizontal-strip] [--item <name>,<ID>[,<FRAME>] [...]]\n",
             argv[0]);
         return 0;
     }
@@ -155,6 +158,10 @@ int main(int argc, char *argv[])
         if (!strcmp(argv[param], "--items-only"))
         {
             itemsOnly = 1;
+        }
+        else if (!strcmp(argv[param], "--horizontal-strip"))
+        {
+            horizontalStrip = 1;
         }
         else if (!strcmp(argv[param], "--map-size"))
         {
@@ -303,17 +310,38 @@ int main(int argc, char *argv[])
         fprintf(cFile, "\n");
     }
 
-    for (int n = 0; items[n].tableName != NULL; n++)
+    if (horizontalStrip)
     {
+        // Horizontal strip mode: output strip-based tables
+        int numStrips = mapHeight / levelHeight;
+        int levelsPerStrip = mapWidth / levelWidth;
 
-        fprintf(cFile, "        public  _%sTables\n\n", items[n].tableName);
-        fprintf(cFile, "_%sTables:\n", items[n].tableName);
-        for (int levels = 0; levels < (mapHeight / levelHeight) * (mapWidth / levelWidth); levels++)
+        for (int n = 0; items[n].tableName != NULL; n++)
         {
-            fprintf(cFile, "        dw      level%d%s\n", levels, items[n].tableName);
+            fprintf(cFile, "        public  _%sTables\n\n", items[n].tableName);
+            fprintf(cFile, "_%sTables:\n", items[n].tableName);
+            for (int strip = 0; strip < numStrips; strip++)
+            {
+                fprintf(cFile, "        dw      strip%d%s\n", strip, items[n].tableName);
+            }
+            fprintf(cFile, "\n");
         }
+    }
+    else
+    {
+        // Original per-level mode
+        for (int n = 0; items[n].tableName != NULL; n++)
+        {
 
-        fprintf(cFile, "\n");
+            fprintf(cFile, "        public  _%sTables\n\n", items[n].tableName);
+            fprintf(cFile, "_%sTables:\n", items[n].tableName);
+            for (int levels = 0; levels < (mapHeight / levelHeight) * (mapWidth / levelWidth); levels++)
+            {
+                fprintf(cFile, "        dw      level%d%s\n", levels, items[n].tableName);
+            }
+
+            fprintf(cFile, "\n");
+        }
     }
 
     if (dataSection)
@@ -322,17 +350,34 @@ int main(int argc, char *argv[])
         fprintf(cFile, "\n");
     }
 
-    for (int y = 0; y < (mapHeight / levelHeight); y++)
+    if (horizontalStrip)
     {
-        for (int x = 0; x < (mapWidth / levelWidth); x++)
+        // Horizontal strip mode: process items per strip with world coordinates
+        // Single pass: read strip, extract items, blank, write back
+        int numStrips = mapHeight / levelHeight;
+
+        // Allocate buffer for entire strip
+        unsigned char *stripData = malloc(mapWidth * levelHeight);
+        if (!stripData)
         {
+            fprintf(stderr, "Error allocating strip buffer\n");
+            free(outputFileName);
+            free(inputData);
+            free(compressData);
+            fclose(inFile);
+            exit(-1);
+        }
+
+        for (int strip = 0; strip < numStrips; strip++)
+        {
+            // Read entire strip row by row
             for (int row = 0; row < levelHeight; row++)
             {
-                fseek(inFile, (y * levelHeight * mapWidth) + (x * levelWidth) + (row * mapWidth), SEEK_SET);
-
-                if ((fread(&inputData[row * levelWidth], levelWidth, 1, inFile)) != 1)
+                fseek(inFile, (strip * levelHeight * mapWidth) + (row * mapWidth), SEEK_SET);
+                if ((fread(&stripData[row * mapWidth], mapWidth, 1, inFile)) != 1)
                 {
-                    fprintf(stderr, "Error reading input file\n");
+                    fprintf(stderr, "Error reading strip %d row %d\n", strip, row);
+                    free(stripData);
                     free(outputFileName);
                     free(inputData);
                     free(compressData);
@@ -341,52 +386,132 @@ int main(int argc, char *argv[])
                 }
             }
 
+            // Output items for this strip with world coordinates
             for (int n = 0; items[n].tableName != NULL; n++)
             {
                 bool oneShot = FALSE;
 
                 for (item_data_t *data = items[n].data; data != NULL; data = data->next)
                 {
-                    // Find items
-                    for (int map = 0; map < levelHeight * levelWidth; map++)
+                    // Scan entire strip for items
+                    for (int map = 0; map < levelHeight * mapWidth; map++)
                     {
-                        if (inputData[map] == data->id)
+                        if (stripData[map] == data->id)
                         {
-                            // Items in tables don't need to be in
-                            // the map, blank them out.
-                            inputData[map] = blank;
+                            // Calculate world X coordinate (16-bit: 0 to strip width in pixels)
+                            int worldX = (map % mapWidth) * 8;
+                            int worldY = (map / mapWidth) * 8;
+
+                            // Blank item from strip data
+                            stripData[map] = blank;
+
                             if (!oneShot)
                             {
                                 oneShot = TRUE;
-                                fprintf(cFile, "level%d%s:\n", (y * (mapWidth / levelWidth)) + x, items[n].tableName);
+                                fprintf(cFile, "strip%d%s:\n", strip, items[n].tableName);
                             }
-                            fprintf(cFile, "        db      $01, $%02x, $%02x, $%02x\n", (map % levelWidth) * 8,
-                                    (map / levelWidth) * 8, data->frame);
+                            // Output: flags, worldX_low, worldX_high, Y, frame
+                            fprintf(cFile, "        db      $01, $%02x, $%02x, $%02x, $%02x\n",
+                                    worldX & 0xFF, (worldX >> 8) & 0xFF, worldY, data->frame);
                             items[n].count++;
                         }
                     }
                 }
                 if (!oneShot)
                 {
-                    fprintf(cFile, "level%d%s equ eot\n\n", (y * (mapWidth / levelWidth)) + x, items[n].tableName);
+                    fprintf(cFile, "strip%d%s equ eot\n\n", strip, items[n].tableName);
                 }
                 else
                     fprintf(cFile, "        db      $ff\n\n");
             }
 
-            // Write out updated map
+            // Write back blanked strip
             for (int row = 0; row < levelHeight; row++)
             {
-                fseek(inFile, (y * levelHeight * mapWidth) + (x * levelWidth) + (row * mapWidth), SEEK_SET);
-
-                if ((fwrite(&inputData[row * levelWidth], levelWidth, 1, inFile)) != 1)
+                fseek(inFile, (strip * levelHeight * mapWidth) + (row * mapWidth), SEEK_SET);
+                if ((fwrite(&stripData[row * mapWidth], mapWidth, 1, inFile)) != 1)
                 {
-                    fprintf(stderr, "Error writing updated map\n");
+                    fprintf(stderr, "Error writing blanked strip %d\n", strip);
+                    free(stripData);
                     free(outputFileName);
                     free(inputData);
                     free(compressData);
                     fclose(inFile);
                     exit(-1);
+                }
+            }
+        }
+        free(stripData);
+    }
+    else
+    {
+        // Original per-level mode
+        for (int y = 0; y < (mapHeight / levelHeight); y++)
+        {
+            for (int x = 0; x < (mapWidth / levelWidth); x++)
+            {
+                for (int row = 0; row < levelHeight; row++)
+                {
+                    fseek(inFile, (y * levelHeight * mapWidth) + (x * levelWidth) + (row * mapWidth), SEEK_SET);
+
+                    if ((fread(&inputData[row * levelWidth], levelWidth, 1, inFile)) != 1)
+                    {
+                        fprintf(stderr, "Error reading input file\n");
+                        free(outputFileName);
+                        free(inputData);
+                        free(compressData);
+                        fclose(inFile);
+                        exit(-1);
+                    }
+                }
+
+                for (int n = 0; items[n].tableName != NULL; n++)
+                {
+                    bool oneShot = FALSE;
+
+                    for (item_data_t *data = items[n].data; data != NULL; data = data->next)
+                    {
+                        // Find items
+                        for (int map = 0; map < levelHeight * levelWidth; map++)
+                        {
+                            if (inputData[map] == data->id)
+                            {
+                                // Items in tables don't need to be in
+                                // the map, blank them out.
+                                inputData[map] = blank;
+                                if (!oneShot)
+                                {
+                                    oneShot = TRUE;
+                                    fprintf(cFile, "level%d%s:\n", (y * (mapWidth / levelWidth)) + x, items[n].tableName);
+                                }
+                                fprintf(cFile, "        db      $01, $%02x, $%02x, $%02x\n", (map % levelWidth) * 8,
+                                        (map / levelWidth) * 8, data->frame);
+                                items[n].count++;
+                            }
+                        }
+                    }
+                    if (!oneShot)
+                    {
+                        fprintf(cFile, "level%d%s equ eot\n\n", (y * (mapWidth / levelWidth)) + x, items[n].tableName);
+                    }
+                    else
+                        fprintf(cFile, "        db      $ff\n\n");
+                }
+
+                // Write out updated map
+                for (int row = 0; row < levelHeight; row++)
+                {
+                    fseek(inFile, (y * levelHeight * mapWidth) + (x * levelWidth) + (row * mapWidth), SEEK_SET);
+
+                    if ((fwrite(&inputData[row * levelWidth], levelWidth, 1, inFile)) != 1)
+                    {
+                        fprintf(stderr, "Error writing updated map\n");
+                        free(outputFileName);
+                        free(inputData);
+                        free(compressData);
+                        fclose(inFile);
+                        exit(-1);
+                    }
                 }
             }
         }
@@ -397,19 +522,36 @@ int main(int argc, char *argv[])
     {
         rewind(inFile);
 
-        for (int y = 0; y < (mapHeight / compressHeight); y++)
+        if (horizontalStrip)
         {
-            for (int x = 0; x < (mapWidth / compressWidth); x++)
+            // Horizontal strip mode: output entire rows as strips
+            int numStrips = mapHeight / levelHeight;
+            int stripSize = mapWidth * levelHeight;
+            unsigned char *stripBuffer = malloc(stripSize);
+
+            if (!stripBuffer)
             {
-                sprintf(outputFileName, "%s_%02d%02d.%s", fileName, x, y, ext);
+                fprintf(stderr, "Error allocating strip buffer for compression\n");
+                free(outputFileName);
+                free(inputData);
+                free(compressData);
+                fclose(inFile);
+                exit(-1);
+            }
 
-                for (int row = 0; row < compressHeight; row++)
+            for (int strip = 0; strip < numStrips; strip++)
+            {
+                sprintf(outputFileName, "%s_strip%d.%s", fileName, strip, ext);
+
+                // Read entire strip row by row
+                for (int row = 0; row < levelHeight; row++)
                 {
-                    fseek(inFile, (y * compressHeight * mapWidth) + (x * compressWidth) + (row * mapWidth), SEEK_SET);
+                    fseek(inFile, (strip * levelHeight * mapWidth) + (row * mapWidth), SEEK_SET);
 
-                    if ((fread(&compressData[row * compressWidth], compressWidth, 1, inFile)) != 1)
+                    if ((fread(&stripBuffer[row * mapWidth], mapWidth, 1, inFile)) != 1)
                     {
-                        fprintf(stderr, "Error reading input file\n");
+                        fprintf(stderr, "Error reading strip %d row %d\n", strip, row);
+                        free(stripBuffer);
                         free(outputFileName);
                         free(inputData);
                         free(compressData);
@@ -418,7 +560,36 @@ int main(int argc, char *argv[])
                     }
                 }
                 fprintf(stderr, "%s ", outputFileName);
-                doCompression(outputFileName, compressData, compressSize);
+                doCompression(outputFileName, stripBuffer, stripSize);
+            }
+            free(stripBuffer);
+        }
+        else
+        {
+            // Original per-level mode
+            for (int y = 0; y < (mapHeight / compressHeight); y++)
+            {
+                for (int x = 0; x < (mapWidth / compressWidth); x++)
+                {
+                    sprintf(outputFileName, "%s_%02d%02d.%s", fileName, x, y, ext);
+
+                    for (int row = 0; row < compressHeight; row++)
+                    {
+                        fseek(inFile, (y * compressHeight * mapWidth) + (x * compressWidth) + (row * mapWidth), SEEK_SET);
+
+                        if ((fread(&compressData[row * compressWidth], compressWidth, 1, inFile)) != 1)
+                        {
+                            fprintf(stderr, "Error reading input file\n");
+                            free(outputFileName);
+                            free(inputData);
+                            free(compressData);
+                            fclose(inFile);
+                            exit(-1);
+                        }
+                    }
+                    fprintf(stderr, "%s ", outputFileName);
+                    doCompression(outputFileName, compressData, compressSize);
+                }
             }
         }
     }
@@ -436,7 +607,7 @@ int main(int argc, char *argv[])
     }
 
     //
-    // Write out the level table and the compressed tilemap data table
+    // Write out the level/strip table and the compressed tilemap data table
     //
     if (itemsOnly == 0)
     {
@@ -447,28 +618,64 @@ int main(int argc, char *argv[])
             fprintf(cFile, "\n");
         }
 
-        fprintf(cFile, "        public  _levelTable\n");
-        fprintf(cFile, "\n");
-        fprintf(cFile, "_levelTable:\n");
-
         char *fname = basename(fileName);
 
-        for (int y = 0; y < (mapHeight / compressHeight); y++)
+        if (horizontalStrip)
         {
-            for (int x = 0; x < (mapWidth / compressWidth); x++)
+            // Horizontal strip mode: output strip table
+            int numStrips = mapHeight / levelHeight;
+
+            fprintf(cFile, "        public  _stripTable\n");
+            fprintf(cFile, "\n");
+            fprintf(cFile, "_stripTable:\n");
+
+            for (int strip = 0; strip < numStrips; strip++)
             {
-                fprintf(cFile, "        dw      %s_%02d%02d\n", fname, x, y);
+                fprintf(cFile, "        dw      %s_strip%d\n", fname, strip);
+            }
+
+            fprintf(cFile, "\n");
+
+            // Also output _levelTable for backwards compatibility (pointing to strip 0 start)
+            fprintf(cFile, "        public  _levelTable\n");
+            fprintf(cFile, "_levelTable equ _stripTable\n");
+            fprintf(cFile, "\n");
+
+            // Output strip width constant
+            fprintf(cFile, "        public  _stripWidthTiles\n");
+            fprintf(cFile, "_stripWidthTiles equ %d\n", mapWidth);
+            fprintf(cFile, "\n");
+
+            for (int strip = 0; strip < numStrips; strip++)
+            {
+                fprintf(cFile, "%s_strip%d:\n", fname, strip);
+                fprintf(cFile, "        binary  \"%s_strip%d.nxm.zx0\"\n", fname, strip);
             }
         }
-
-        fprintf(cFile, "\n");
-
-        for (int y = 0; y < (mapHeight / compressHeight); y++)
+        else
         {
-            for (int x = 0; x < (mapWidth / compressWidth); x++)
+            // Original per-level mode
+            fprintf(cFile, "        public  _levelTable\n");
+            fprintf(cFile, "\n");
+            fprintf(cFile, "_levelTable:\n");
+
+            for (int y = 0; y < (mapHeight / compressHeight); y++)
             {
-                fprintf(cFile, "%s_%02d%02d:\n", fname, x, y);
-                fprintf(cFile, "        binary  \"%s_%02d%02d.nxm.zx0\"\n", fname, x, y);
+                for (int x = 0; x < (mapWidth / compressWidth); x++)
+                {
+                    fprintf(cFile, "        dw      %s_%02d%02d\n", fname, x, y);
+                }
+            }
+
+            fprintf(cFile, "\n");
+
+            for (int y = 0; y < (mapHeight / compressHeight); y++)
+            {
+                for (int x = 0; x < (mapWidth / compressWidth); x++)
+                {
+                    fprintf(cFile, "%s_%02d%02d:\n", fname, x, y);
+                    fprintf(cFile, "        binary  \"%s_%02d%02d.nxm.zx0\"\n", fname, x, y);
+                }
             }
         }
     }
