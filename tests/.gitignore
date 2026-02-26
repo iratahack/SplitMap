@@ -1,0 +1,30 @@
+# Test executables
+test_splitmap
+splitmap
+
+# Test output files
+test_*.nxm
+test_*.inc
+test_*.zx0
+*.nxm
+*.inc
+*.zx0
+
+# Valgrind reports
+valgrind-report.txt
+valgrind-*.txt
+
+# Coverage reports
+*.gcov
+*.gcda
+*.gcno
+*.gcov.html
+
+# Test logs
+test-output.txt
+test-*.log
+
+# Temporary files
+*.tmp
+*.bak
+*~
