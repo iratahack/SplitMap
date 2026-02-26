@@ -72,6 +72,25 @@ item_t *addItem(char *name, int id, unsigned char frame)
     return (foundEntry);
 }
 
+void writeRaw(char *fileName, unsigned char *input_data, int input_size)
+{
+    FILE *ofp = fopen(fileName, "wb");
+    if (!ofp)
+    {
+        fprintf(stderr, "Error: Cannot create output file %s\n", fileName);
+        exit(1);
+    }
+
+    if (fwrite(input_data, sizeof(char), input_size, ofp) != input_size)
+    {
+        fprintf(stderr, "Error: Cannot write output file %s\n", fileName);
+        fclose(ofp);
+        exit(1);
+    }
+
+    fclose(ofp);
+}
+
 void doCompression(char *fileName, unsigned char *input_data, int input_size)
 {
     FILE *ofp = NULL;
@@ -144,11 +163,12 @@ int main(int argc, char *argv[])
     memset(items, 0, sizeof(items));
 
     int horizontalStrip = 0;
+    int noCompress = 0;
 
     if (argc < 2)
     {
         printf(
-            "%s --map <filename> --map-size <WIDTHxHEIGHT> --level-size <WIDTHxHEIGHT> [--blank <tile ID>] [--tablessection <section name>] [--[ro]datasection <section name>] [--items-only] [--horizontal-strip] [--item <name>,<ID>[,<FRAME>] [...]]\n",
+            "%s --map <filename> --map-size <WIDTHxHEIGHT> --level-size <WIDTHxHEIGHT> [--blank <tile ID>] [--tablessection <section name>] [--[ro]datasection <section name>] [--items-only] [--horizontal-strip] [--no-compress] [--item <name>,<ID>[,<FRAME>] [...]]\n",
             argv[0]);
         return 0;
     }
@@ -162,6 +182,10 @@ int main(int argc, char *argv[])
         else if (!strcmp(argv[param], "--horizontal-strip"))
         {
             horizontalStrip = 1;
+        }
+        else if (!strcmp(argv[param], "--no-compress"))
+        {
+            noCompress = 1;
         }
         else if (!strcmp(argv[param], "--map-size"))
         {
@@ -560,7 +584,10 @@ int main(int argc, char *argv[])
                     }
                 }
                 fprintf(stderr, "%s ", outputFileName);
-                doCompression(outputFileName, stripBuffer, stripSize);
+                if (noCompress)
+                    writeRaw(outputFileName, stripBuffer, stripSize);
+                else
+                    doCompression(outputFileName, stripBuffer, stripSize);
             }
             free(stripBuffer);
         }
@@ -588,7 +615,10 @@ int main(int argc, char *argv[])
                         }
                     }
                     fprintf(stderr, "%s ", outputFileName);
-                    doCompression(outputFileName, compressData, compressSize);
+                    if (noCompress)
+                        writeRaw(outputFileName, compressData, compressSize);
+                    else
+                        doCompression(outputFileName, compressData, compressSize);
                 }
             }
         }
@@ -629,9 +659,11 @@ int main(int argc, char *argv[])
             fprintf(cFile, "\n");
             fprintf(cFile, "_stripTable:\n");
 
+            // Generate 4-byte entries using dq directive
+            // The assembler automatically encodes the full address including bank number
             for (int strip = 0; strip < numStrips; strip++)
             {
-                fprintf(cFile, "        dw      %s_strip%d\n", fname, strip);
+                fprintf(cFile, "        dq      %s_strip%d\n", fname, strip);
             }
 
             fprintf(cFile, "\n");
@@ -646,10 +678,21 @@ int main(int argc, char *argv[])
             fprintf(cFile, "_stripWidthTiles equ %d\n", mapWidth);
             fprintf(cFile, "\n");
 
+            // Output strips uncompressed for direct ROM access
+            // Distribution:
+            // Bank 2: strips 0-3 (4 strips = 16128 bytes)
+            // Bank 7: strip 4 (1 strip = 4032 bytes)
             for (int strip = 0; strip < numStrips; strip++)
             {
+                int bankNum;
+                if (strip < 4) bankNum = 2;
+                else bankNum = 7;  // Strip 4 in bank 7
+                
+                fprintf(cFile, "        section  RODATA_%d\n", bankNum);
                 fprintf(cFile, "%s_strip%d:\n", fname, strip);
-                fprintf(cFile, "        binary  \"%s_strip%d.nxm.zx0\"\n", fname, strip);
+                // Always output uncompressed for direct ROM access
+                fprintf(cFile, "        binary  \"%s_strip%d.nxm\"\n", fname, strip);
+                fprintf(cFile, "\n");
             }
         }
         else
@@ -674,7 +717,10 @@ int main(int argc, char *argv[])
                 for (int x = 0; x < (mapWidth / compressWidth); x++)
                 {
                     fprintf(cFile, "%s_%02d%02d:\n", fname, x, y);
-                    fprintf(cFile, "        binary  \"%s_%02d%02d.nxm.zx0\"\n", fname, x, y);
+                    if (noCompress)
+                        fprintf(cFile, "        binary  \"%s_%02d%02d.nxm\"\n", fname, x, y);
+                    else
+                        fprintf(cFile, "        binary  \"%s_%02d%02d.nxm.zx0\"\n", fname, x, y);
                 }
             }
         }
